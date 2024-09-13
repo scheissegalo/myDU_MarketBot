@@ -23,6 +23,13 @@ MarketBot is application designed to monitor and craft items based on buy orders
 - **Market Operations:** Attempts to sell crafted items in the highest-paying market, not just the one where the buy order was detected.
 - **Configurable Markets and Intervals:** Allows customization of market IDs and operation intervals through a configuration file.
 
+## Future
+- [] Smarter pricing system or ability to configure min max prices. Maybe based on tier or crafting time.
+- [] Create buy/sell orders for ores and gasses.
+- [] More complex crafting system. Instead directly crafting item, before that, craft necessary components till ore level. Overflow of components could be sold on market.
+- [] More complex resource handling. Instead of crafting everything from thin air, maybe it could look into sell orders for components and buy them. This would add movement in smaller servers.
+- [] Market monitoring and pricing based on real market situation. Monitor own bot sell and buy orders to adjust pricing.
+
 ## How It Works
 
 1. **Buy Order Detection:** MarketBot monitors specified markets for new buy orders that meet certain criteria.
@@ -93,8 +100,7 @@ MarketBot uses a JSON configuration file to set up its operational parameters. B
       restart: always
       networks:
         vpcbr:
-          ipv4_address: 10.5.0.50
- ```
+          ipv4_address: 10.5.0.50```
 4. **Monitor Logs:**
    - The application provides logging information to help you monitor its activities and debug if necessary.
 
