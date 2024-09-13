@@ -8,6 +8,7 @@ using BotLib.Utils;
 using Microsoft.Extensions.Logging;
 using NQ;
 using NQ.Interfaces;
+using NQutils.Exceptions;
 using Orleans;
 
 public class MarketService : IMarketService
@@ -33,54 +34,28 @@ public class MarketService : IMarketService
         _logger = logger;
     }
 
-    private async Task<bool> HasEnoughMoney(ulong resourceId, double pricePerUnit, long orderSize)
-    {
-        var wallet = await Mod.bot.Req.GetWallet();
-        bool hasEnough = wallet.amount >= (long)(pricePerUnit * orderSize * 100);
-
-        if (!hasEnough)
-        {
-            _logger.LogWarning($"Not enough money to place order for resource {resourceId}. Needed: {(long)(pricePerUnit * orderSize * 100)}, Available: {wallet.amount}");
-        }
-
-        return hasEnough;
-    }
-
-    public async Task<MarketOrders> GetMarketOrderForItem(ulong marketId, ulong resourceId)
-    {
-        var orders = await Mod.bot.Req.MarketGetMyOrders(
-                    new MarketSelectRequest
-                    {
-                        marketIds = new List<ulong> { marketId },
-                        itemTypes = new List<ulong> { resourceId }
-                    }
-                );
-        return orders;
-    }
-
     public async Task CreateItem(ulong itemTypeId, long quantity)
     {
         var inventoryGrain = _orleans.GetInventoryGrain(Mod.bot.PlayerId);
 
-        try
+
+        var itemAndQuantity = new ItemAndQuantity
         {
-            var itemAndQuantity = new ItemAndQuantity
+            item = _gameplayBank.GetDefinition(itemTypeId).AsItemInfo(),
+            quantity = _gameplayBank.QuantityFromGDValue(itemTypeId, quantity),
+        };
+        var list = new ItemAndQuantityList();
+        list.content.Add(itemAndQuantity);
+
+        await RetryHelper.RetryOnExceptionAsync(
+            async () =>
             {
-                item = _gameplayBank.GetDefinition(itemTypeId).AsItemInfo(),
-                quantity = _gameplayBank.QuantityFromGDValue(itemTypeId, quantity),
-            };
-            var list = new ItemAndQuantityList();
-            list.content.Add(itemAndQuantity);
-
-            await Mod.bot.Req.BotGiveItems(list);
-
-            _logger.LogInformation("Item successfully created in the bot's inventory.");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError("Failed to create item in the bots's inventory.");
-            throw new InvalidOperationException("Failed to create item in the inventory.", ex);
-        }
+                await Mod.bot.Req.BotGiveItems(list);
+                _logger.LogInformation("Item successfully created in the bot's inventory.");
+            },
+            IsDisconnectedException,
+            ReconnectBotAsync
+            );
     }
 
     public async Task PlaceMarketOrder(ulong marketId, ulong itemTypeId, long quantity, double unitPrice, bool sell = false, bool fromMarketContainer = false)
@@ -103,46 +78,63 @@ public class MarketService : IMarketService
             marketRequest.source = MarketRequestSource.FROM_MARKET_CONTAINER;
         }
 
-        try
+        await RetryHelper.RetryOnExceptionAsync(
+        async () =>
         {
             await Mod.bot.Req.MarketPlaceOrder(marketRequest);
             _logger.LogInformation($"Successfully placed market order for {quantity} of item {itemTypeId} in market {marketId} at price {unitPrice}.");
-        }
-        catch (Exception ex)
-        {
-            _logger.LogError($"Failed to place market order for {itemTypeId} in market {marketId}. Error: {ex.Message}");
-            throw;
-        }
+        },
+            IsDisconnectedException,
+            ReconnectBotAsync
+        );
     }
 
     public async Task<IEnumerable<BuyOrder>> GetBuyOrdersForItem(ulong marketId, ulong itemTypeId)
     {
-        try
-        {
-            var orders = await Mod.bot.Req.MarketSelectItem(new MarketSelectRequest
+        return await RetryHelper.RetryOnExceptionAsync(
+            async () =>
             {
-                marketIds = new List<ulong> { marketId },
-                itemTypes = new List<ulong> { itemTypeId }
-            });
-
-            var buyOrders = orders.orders
-                .Where(order => order.buyQuantity > 0)
-                .Select(order => new BuyOrder
+                var orders = await Mod.bot.Req.MarketSelectItem(new MarketSelectRequest
                 {
-                    OrderId = order.orderId,
-                    ItemId = order.itemType,
-                    Quantity = order.buyQuantity,
-                    Price = order.unitPrice.amount,
-                    MarketId = order.marketId
+                    marketIds = new List<ulong> { marketId },
+                    itemTypes = new List<ulong> { itemTypeId }
                 });
 
-            return buyOrders;
-        }
-        catch (Exception ex)
+                var buyOrders = orders.orders
+                    .Where(order => order.buyQuantity > 0)
+                    .Select(order => new BuyOrder
+                    {
+                        OrderId = order.orderId,
+                        ItemId = order.itemType,
+                        Quantity = order.buyQuantity,
+                        Price = order.unitPrice.amount,
+                        MarketId = order.marketId
+                    });
+
+                return buyOrders;
+            },
+            IsDisconnectedException,
+            ReconnectBotAsync
+        );
+
+    }
+
+    private bool IsDisconnectedException(Exception ex)
+    {
+        // Implement logic to check if the exception is due to disconnection
+        if (ex is BusinessException businessEx)
         {
-            _logger.LogError(ex, $"Failed to retrieve buy orders for item {itemTypeId} in market {marketId}");
-            throw new InvalidOperationException("Error retrieving buy orders.", ex);
+            // Check for specific error codes or messages
+            return businessEx.Message.Contains("disconnected") || businessEx.Message.Contains("connection");
         }
+
+        return false;
+    }
+
+    private async Task ReconnectBotAsync()
+    {
+        _logger.LogInformation("Attempting to reconnect the bot...");
+        await Mod.bot.Reconnect();
     }
 
     public async Task HandleCraftedItem(ulong itemId, ulong marketId, long quantity)
@@ -170,33 +162,30 @@ public class MarketService : IMarketService
             {
                 if (remainingQuantityToSell <= 0)
                 {
-                    // We have sold everything, stop processing
                     return;
                 }
 
-                // Determine how much to sell for this buy order
                 var quantityToSell = Math.Min(remainingQuantityToSell, buyOrder.Quantity);
-                try
-                {
-                    // Create only the required number of items to match this buy order
-                    await CreateItem(itemId, quantityToSell);
 
-                    // Create the instant market order to sell the items
-                    await Mod.bot.Req.MarketInstantOrder(new MarketRequest
+                await CreateItem(itemId, quantityToSell);
+
+                await RetryHelper.RetryOnExceptionAsync(
+                    async () =>
                     {
-                        marketId = currentMarketId,
-                        source = MarketRequestSource.FROM_INVENTORY, // Assuming inventory is the source
-                        itemType = itemId,
-                        buyQuantity = -quantityToSell, // Negative because we are selling
-                        unitPrice = buyOrder.Price,          // Price from the buy order
-                        orderId = buyOrder.OrderId           // The buy order we are fulfilling
-                    });
-                }
-                catch (Exception ex)
-                {
-                    _logger.LogError($"Unable to sell {quantityToSell} of item {itemId} at price {buyOrder.Price} in market {currentMarketId}.");
-                    throw new InvalidOperationException("Error creating and selling item", ex);
-                }
+                        // Create the instant market order to sell the items
+                        await Mod.bot.Req.MarketInstantOrder(new MarketRequest
+                        {
+                            marketId = currentMarketId,
+                            source = MarketRequestSource.FROM_INVENTORY, // Assuming inventory is the source
+                            itemType = itemId,
+                            buyQuantity = -quantityToSell, // Negative because we are selling
+                            unitPrice = buyOrder.Price,          // Price from the buy order
+                            orderId = buyOrder.OrderId           // The buy order we are fulfilling
+                        });
+                    },
+                    IsDisconnectedException,
+                    ReconnectBotAsync
+                );
                 _logger.LogInformation($"Sold {quantityToSell} of item {itemId} at price {buyOrder.Price} in market {currentMarketId}.");
 
                 // Reduce the total quantity to sell

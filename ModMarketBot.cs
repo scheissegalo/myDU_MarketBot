@@ -11,9 +11,6 @@ public class ModMarketBot : Mod
     // Main loop for the bot, responsible for initializing and scheduling tasks
     public override async Task Loop()
     {
-        bot = await CreateUser("trader", true, false);
-        Console.WriteLine("Bot initialized.");
-
         var buyOrderMonitorService = serviceProvider.GetRequiredService<BuyOrderMonitorService>();
         buyOrderMonitorService.Start();
 

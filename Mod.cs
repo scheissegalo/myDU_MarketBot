@@ -9,6 +9,7 @@ using BotLib.Generated;
 using BotLib.Protocols;
 using BotLib.Protocols.Queuing;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Toolkit.HighPerformance;
 using NQ;
 using NQ.Router;
 using NQutils;
@@ -103,8 +104,16 @@ public class Mod
         await serviceProvider.StartServices();
         orleans = serviceProvider.GetRequiredService<IClusterClient>();
         dataAccessor = serviceProvider.GetRequiredService<IDataAccessor>();
+
+        Console.WriteLine("Creating BOT User");
+        bot = await RefreshClient();
+        Console.WriteLine("BOT User Created");
     }
 
+    public static async Task<Client> RefreshClient()
+    {
+        return await CreateUser("trader", true, false);
+    }
 
     public async Task Start()
     {
