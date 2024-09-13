@@ -74,7 +74,7 @@ MarketBot uses a JSON configuration file to set up its operational parameters. B
    - Building and running now is part of multistep docker operation. See Dockerfile.runtime
 3. **Automated run with rest of myDU services:**
    - Add following block at the end of docker-compose.yaml in root myDU server directory:
-   - ```yaml
+   ```yaml
    marketbot:
       build:
         context: /path/to/MarketBot
@@ -94,7 +94,6 @@ MarketBot uses a JSON configuration file to set up its operational parameters. B
       networks:
         vpcbr:
           ipv4_address: 10.5.0.50
-
  ```
 4. **Monitor Logs:**
    - The application provides logging information to help you monitor its activities and debug if necessary.
