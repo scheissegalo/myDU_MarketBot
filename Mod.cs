@@ -89,6 +89,7 @@ public class Mod
         {
             options.ConfigPath = configPath;
         });
+        services.AddSingleton<BotConnectionManager>();
         services.AddSingleton<ModMarketBot>();
         services.AddSingleton<ConfigService>();
         services.AddSingleton<CraftingQueue>();

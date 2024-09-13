@@ -8,7 +8,6 @@ using BotLib.Utils;
 using Microsoft.Extensions.Logging;
 using NQ;
 using NQ.Interfaces;
-using NQutils.Exceptions;
 using Orleans;
 
 public class MarketService : IMarketService
@@ -18,13 +17,15 @@ public class MarketService : IMarketService
     private readonly IRecipeService _recipeService;
     private readonly ConfigService _configService;
     private readonly ILogger<MarketService> _logger;
+    private readonly BotConnectionManager _botConnectionManager;
 
     public MarketService(
         ILogger<MarketService> logger,
         ConfigService configService,
         IClusterClient clusterClient,
         IGameplayBank gameplayBank,
-        IRecipeService recipeService
+        IRecipeService recipeService,
+        BotConnectionManager botConnectionManager
         )
     {
         _orleans = clusterClient;
@@ -32,6 +33,7 @@ public class MarketService : IMarketService
         _configService = configService;
         _recipeService = recipeService;
         _logger = logger;
+        _botConnectionManager = botConnectionManager;
     }
 
     public async Task CreateItem(ulong itemTypeId, long quantity)
@@ -53,8 +55,8 @@ public class MarketService : IMarketService
                 await Mod.bot.Req.BotGiveItems(list);
                 _logger.LogInformation("Item successfully created in the bot's inventory.");
             },
-            IsDisconnectedException,
-            ReconnectBotAsync
+            _botConnectionManager.IsDisconnectedException,
+            _botConnectionManager.ReconnectBotAsync
             );
     }
 
@@ -84,8 +86,8 @@ public class MarketService : IMarketService
             await Mod.bot.Req.MarketPlaceOrder(marketRequest);
             _logger.LogInformation($"Successfully placed market order for {quantity} of item {itemTypeId} in market {marketId} at price {unitPrice}.");
         },
-            IsDisconnectedException,
-            ReconnectBotAsync
+            _botConnectionManager.IsDisconnectedException,
+            _botConnectionManager.ReconnectBotAsync
         );
     }
 
@@ -113,28 +115,10 @@ public class MarketService : IMarketService
 
                 return buyOrders;
             },
-            IsDisconnectedException,
-            ReconnectBotAsync
+            _botConnectionManager.IsDisconnectedException,
+            _botConnectionManager.ReconnectBotAsync
         );
 
-    }
-
-    private bool IsDisconnectedException(Exception ex)
-    {
-        // Implement logic to check if the exception is due to disconnection
-        if (ex is BusinessException businessEx)
-        {
-            // Check for specific error codes or messages
-            return businessEx.Message.Contains("disconnected") || businessEx.Message.Contains("connection");
-        }
-
-        return false;
-    }
-
-    private async Task ReconnectBotAsync()
-    {
-        _logger.LogInformation("Attempting to reconnect the bot...");
-        await Mod.bot.Reconnect();
     }
 
     public async Task HandleCraftedItem(ulong itemId, ulong marketId, long quantity)
@@ -183,8 +167,8 @@ public class MarketService : IMarketService
                             orderId = buyOrder.OrderId           // The buy order we are fulfilling
                         });
                     },
-                    IsDisconnectedException,
-                    ReconnectBotAsync
+                    _botConnectionManager.IsDisconnectedException,
+                    _botConnectionManager.ReconnectBotAsync
                 );
                 _logger.LogInformation($"Sold {quantityToSell} of item {itemId} at price {buyOrder.Price} in market {currentMarketId}.");
 
@@ -193,7 +177,6 @@ public class MarketService : IMarketService
             }
         }
 
-        // Log a warning if there are any unsold items after processing all markets
         if (remainingQuantityToSell > 0)
         {
             _logger.LogWarning($"Remaining {remainingQuantityToSell} units of item {itemId} were not sold due to lack of buy orders.");

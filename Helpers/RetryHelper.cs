@@ -3,12 +3,12 @@ using System;
 
 public static class RetryHelper
 {
-   public static async Task<T> RetryOnExceptionAsync<T>(
-        Func<Task<T>> operation,
-        Func<Exception, bool> shouldRetryOnException,
-        Func<Task> onRetryAsync,
-        int maxRetries = 3,
-        TimeSpan? delay = null)
+    public static async Task<T> RetryOnExceptionAsync<T>(
+     Func<Task<T>> operation,
+     Func<Exception, bool> shouldRetryOnException,
+     Func<Exception, Task> onRetryAsync,
+     int maxRetries = 3,
+     TimeSpan? delay = null)
     {
         int retryCount = 0;
         delay ??= TimeSpan.FromSeconds(1);
@@ -30,7 +30,7 @@ public static class RetryHelper
 
                 if (onRetryAsync != null)
                 {
-                    await onRetryAsync();
+                    await onRetryAsync(ex);
                 }
 
                 await Task.Delay(delay.Value);
@@ -38,12 +38,13 @@ public static class RetryHelper
         }
     }
 
+
     public static async Task RetryOnExceptionAsync(
-        Func<Task> operation,
-        Func<Exception, bool> shouldRetryOnException,
-        Func<Task> onRetryAsync,
-        int maxRetries = 3,
-        TimeSpan? delay = null)
+    Func<Task> operation,
+    Func<Exception, bool> shouldRetryOnException,
+    Func<Exception, Task> onRetryAsync,
+    int maxRetries = 3,
+    TimeSpan? delay = null)
     {
         int retryCount = 0;
         delay ??= TimeSpan.FromSeconds(1);
@@ -53,7 +54,7 @@ public static class RetryHelper
             try
             {
                 await operation();
-                return; // Operation succeeded, exit the method
+                return; // Operation succeeded
             }
             catch (Exception ex) when (shouldRetryOnException(ex))
             {
@@ -66,7 +67,7 @@ public static class RetryHelper
 
                 if (onRetryAsync != null)
                 {
-                    await onRetryAsync();
+                    await onRetryAsync(ex);
                 }
 
                 await Task.Delay(delay.Value);
