@@ -2,6 +2,6 @@
     "Market": {
         "MarketOperationsTickInSeconds": 60,
         "QueueProcessingTickInSeconds": 5,
-        "OperationMarkets": [ 3, 4, 29 ]
+        "OperationMarkets": [ 3, 4, 127 ]
     }
 }
