@@ -2,6 +2,12 @@
     "Market": {
         "MarketOperationsTickInSeconds": 60,
         "QueueProcessingTickInSeconds": 5,
-        "OperationMarkets": [ 3, 4, 127 ]
+        "OperationMarkets": [ 3, 4, 127 ],
+        "MinimumBuyOrderPrice": 50,
+        "EnableBuyAndResell": true,
+        "MaxBuyPriceForResell": 1000,
+        "ResellMarkup": 1.1,
+        "DaysToWaitBeforeExpiration": 1,
+        "BotName": "MarketBot"
     }
 }

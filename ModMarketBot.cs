@@ -17,6 +17,14 @@ public class ModMarketBot : Mod
         var craftingQueueService = serviceProvider.GetRequiredService<CraftingQueueService>();
         craftingQueueService.Start();
 
+        // Start sell order monitoring if enabled
+        var configService = serviceProvider.GetRequiredService<ConfigService>();
+        if (configService.Config.Market.EnableBuyAndResell)
+        {
+            var sellOrderMonitorService = serviceProvider.GetRequiredService<ISellOrderMonitorService>();
+            sellOrderMonitorService.Start();
+        }
+
         // Schedule the action to run every 1 minute
         await SafeLoop(Action, 60000, async () =>
         {

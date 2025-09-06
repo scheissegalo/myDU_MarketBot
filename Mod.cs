@@ -97,6 +97,7 @@ public class Mod
         services.AddSingleton<IMarketService, MarketService>();
         services.AddSingleton<CraftingQueueService>();
         services.AddSingleton<BuyOrderMonitorService>();
+        services.AddSingleton<ISellOrderMonitorService, SellOrderMonitorService>();
 
         var sp = services.BuildServiceProvider();
         serviceProvider = sp;

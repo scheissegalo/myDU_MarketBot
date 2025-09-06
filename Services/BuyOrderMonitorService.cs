@@ -116,6 +116,6 @@ public class BuyOrderMonitorService : IBuyOrderMonitorService
 
     private bool ShouldCraft(BuyOrder buyOrder)
     {
-        return buyOrder.Price > 100*100; // Example threshold. *100 is to adjust format
+        return buyOrder.Price > _configService.Config.Market.MinimumBuyOrderPrice * 100; // Convert quantas to internal format
     }
 }

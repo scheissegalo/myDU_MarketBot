@@ -182,4 +182,83 @@ public class MarketService : IMarketService
             _logger.LogWarning($"Remaining {remainingQuantityToSell} units of item {itemId} were not sold due to lack of buy orders.");
         }
     }
+
+    public async Task<IEnumerable<SellOrder>> GetSellOrdersForItem(ulong marketId, ulong itemTypeId)
+    {
+        return await RetryHelper.RetryOnExceptionAsync(
+            async () =>
+            {
+                var orders = await Mod.bot.Req.MarketSelectItem(new MarketSelectRequest
+                {
+                    marketIds = new List<ulong> { marketId },
+                    itemTypes = new List<ulong> { itemTypeId }
+                });
+
+                var sellOrders = orders.orders
+                    .Where(order => order.buyQuantity < 0) // Negative buyQuantity means sell order
+                    .Select(order => new SellOrder
+                    {
+                        OrderId = order.orderId,
+                        ItemId = order.itemType,
+                        Quantity = Math.Abs(order.buyQuantity), // Convert negative to positive
+                        Price = order.unitPrice.amount,
+                        MarketId = order.marketId,
+                        OwnerName = order.ownerName,
+                        ExpirationDate = order.expirationDate.ToDateTime().DateTime
+                    });
+
+                return sellOrders;
+            },
+            _botConnectionManager.IsDisconnectedException,
+            _botConnectionManager.ReconnectBotAsync
+        );
+    }
+
+    public async Task BuyItemFromSellOrder(SellOrder sellOrder)
+    {
+        await RetryHelper.RetryOnExceptionAsync(
+            async () =>
+            {
+                await Mod.bot.Req.MarketInstantOrder(new MarketRequest
+                {
+                    marketId = sellOrder.MarketId,
+                    itemType = sellOrder.ItemId,
+                    buyQuantity = sellOrder.Quantity,
+                    unitPrice = sellOrder.Price,
+                    orderId = sellOrder.OrderId
+                });
+                
+                _logger.LogInformation($"Successfully bought {sellOrder.Quantity} of item {sellOrder.ItemId} at price {sellOrder.Price}");
+            },
+            _botConnectionManager.IsDisconnectedException,
+            _botConnectionManager.ReconnectBotAsync
+        );
+    }
+
+    public async Task<IEnumerable<PurchasedItem>> GetPurchasedItemsFromMarketContainer(ulong marketId)
+    {
+        return await RetryHelper.RetryOnExceptionAsync(
+            async () =>
+            {
+                var storage = await Mod.bot.Req.MarketContainerGetMyContent(new MarketSelectRequest
+                {
+                    marketIds = new List<ulong> { marketId },
+                    itemTypes = new List<ulong> { _gameplayBank.GetDefinition<NQutils.Def.BaseItem>().Id }
+                });
+
+                var purchasedItems = storage.slots
+                    .Where(slot => slot.purchased)
+                    .Select(slot => new PurchasedItem
+                    {
+                        ItemId = slot.itemAndQuantity.item.type,
+                        Quantity = slot.itemAndQuantity.quantity.value,
+                        MarketId = marketId
+                    });
+
+                return purchasedItems;
+            },
+            _botConnectionManager.IsDisconnectedException,
+            _botConnectionManager.ReconnectBotAsync
+        );
+    }
 }
