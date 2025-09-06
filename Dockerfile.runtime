@@ -15,5 +15,6 @@ RUN apt update && DEBIAN_FRONTEND=noninteractive apt install -y libcurl4 libgoog
   libhiredis0.14 libpq5 libicu72
 LABEL nqcomponent orleans
 COPY --from=nq_server_build /install/Mod /Mod
+COPY items.yaml /Mod/items.yaml
 WORKDIR /Mod
 ENTRYPOINT ["/Mod/MarketBot", "/config/dual.yaml","/Mod/config.json"]

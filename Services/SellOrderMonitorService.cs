@@ -11,6 +11,7 @@ public class SellOrderMonitorService : ISellOrderMonitorService
     private readonly IMarketService _marketService;
     private readonly IRecipeService _recipeService;
     private readonly BotConnectionManager _botConnectionManager;
+    private readonly ItemIdService _itemIdService;
 
     // Dictionary to track buy prices for items we've purchased
     private Dictionary<ulong, long> _buyPrices = new Dictionary<ulong, long>();
@@ -20,13 +21,15 @@ public class SellOrderMonitorService : ISellOrderMonitorService
         ConfigService configService,
         IMarketService marketService,
         IRecipeService recipeService,
-        BotConnectionManager botConnectionManager)
+        BotConnectionManager botConnectionManager,
+        ItemIdService itemIdService)
     {
         _logger = logger;
         _configService = configService;
         _marketService = marketService;
         _recipeService = recipeService;
         _botConnectionManager = botConnectionManager;
+        _itemIdService = itemIdService;
     }
 
     public void Start()
@@ -139,11 +142,52 @@ public class SellOrderMonitorService : ISellOrderMonitorService
                 await Task.Delay(TimeSpan.FromSeconds(_configService.Config.Market.MarketOperationsTickInSeconds));
             }
             
+            // Also check for common raw materials and resources that might not be in recipes
+            await CheckCommonRawMaterials(marketId);
+            
             _logger.LogInformation($"Completed monitoring market {marketId}, checked {visitedItems.Count} unique items");
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, $"Error monitoring sell orders in market {marketId}");
+        }
+    }
+
+    private async Task CheckCommonRawMaterials(ulong marketId)
+    {
+        try
+        {
+            _logger.LogInformation($"Checking all items from items.yaml in market {marketId}");
+            
+            // Get all item IDs from the items.yaml file
+            var allItemIds = await _itemIdService.GetAllItemIdsAsync();
+            
+            if (!allItemIds.Any())
+            {
+                _logger.LogWarning("No item IDs loaded from items.yaml");
+                return;
+            }
+
+            _logger.LogInformation($"Checking {allItemIds.Count} items from items.yaml in market {marketId}");
+            
+            int processedCount = 0;
+            foreach (var itemId in allItemIds)
+            {
+                await ProcessSellOrdersForItem(marketId, itemId);
+                processedCount++;
+                
+                // Log progress every 1000 items to avoid spam
+                if (processedCount % 1000 == 0)
+                {
+                    _logger.LogInformation($"Processed {processedCount}/{allItemIds.Count} items from items.yaml in market {marketId}");
+                }
+            }
+            
+            _logger.LogInformation($"Completed checking {allItemIds.Count} items from items.yaml in market {marketId}");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error checking items from items.yaml in market {marketId}");
         }
     }
 
