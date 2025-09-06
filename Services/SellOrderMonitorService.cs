@@ -97,12 +97,14 @@ public class SellOrderMonitorService : ISellOrderMonitorService
 
     private async Task MonitorSellOrders(ulong marketId)
     {
+        _logger.LogDebug($"Monitoring sell orders in market {marketId}");
         var visitedItems = new HashSet<ulong>();
 
         // Monitor items from all tiers
         for (int tier = 1; tier <= 5; tier++)
         {
             var recipes = await _recipeService.GetRecipesByTier(tier);
+            _logger.LogDebug($"Checking tier {tier} with {recipes.Count()} recipes in market {marketId}");
 
             foreach (var recipe in recipes)
             {
@@ -126,6 +128,11 @@ public class SellOrderMonitorService : ISellOrderMonitorService
         try
         {
             var sellOrders = await _marketService.GetSellOrdersForItem(marketId, itemId);
+            
+            if (sellOrders.Any())
+            {
+                _logger.LogDebug($"Found {sellOrders.Count()} sell orders for item {itemId} in market {marketId}");
+            }
 
             foreach (var sellOrder in sellOrders)
             {
@@ -143,22 +150,27 @@ public class SellOrderMonitorService : ISellOrderMonitorService
 
     private bool ShouldBuySellOrder(SellOrder sellOrder)
     {
+        _logger.LogDebug($"Checking sell order: Item {sellOrder.ItemId}, Price {sellOrder.Price}, Owner {sellOrder.OwnerName}, Expires {sellOrder.ExpirationDate}");
+
         // Skip if it's a seeded order (owner is "marketbot" or similar)
         if (sellOrder.OwnerName?.ToLower().Contains("marketbot") == true)
         {
+            _logger.LogDebug($"Skipping seeded order from {sellOrder.OwnerName}");
             return false;
         }
 
         // Skip if it's our own order
         if (sellOrder.OwnerName == _configService.Config.Market.BotName)
         {
+            _logger.LogDebug($"Skipping our own order from {sellOrder.OwnerName}");
             return false;
         }
 
         // Check if price is within our budget
-        var maxBuyPrice = _configService.Config.Market.MaxBuyPriceForResell * 100; // Convert to internal format
+        var maxBuyPrice = _configService.Config.Market.MaxBuyPriceForResell; // Price is already in quantas
         if (sellOrder.Price > maxBuyPrice)
         {
+            _logger.LogDebug($"Price {sellOrder.Price} exceeds max buy price {maxBuyPrice}");
             return false;
         }
 
@@ -166,9 +178,11 @@ public class SellOrderMonitorService : ISellOrderMonitorService
         var timeUntilExpiration = sellOrder.ExpirationDate - DateTime.UtcNow;
         if (timeUntilExpiration.TotalDays > _configService.Config.Market.DaysToWaitBeforeExpiration)
         {
+            _logger.LogDebug($"Order expires in {timeUntilExpiration.TotalDays:F1} days, but we only buy items expiring within {_configService.Config.Market.DaysToWaitBeforeExpiration} days");
             return false;
         }
 
+        _logger.LogInformation($"✅ Will buy sell order: Item {sellOrder.ItemId}, Price {sellOrder.Price}, Owner {sellOrder.OwnerName}");
         return true;
     }
 
