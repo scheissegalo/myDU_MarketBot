@@ -113,6 +113,7 @@ public class SellOrderMonitorService : ISellOrderMonitorService
                 var recipes = await _recipeService.GetRecipesByTier(tier);
                 _logger.LogInformation($"Found {recipes.Count()} recipes in tier {tier} for market {marketId}");
 
+                int processedItems = 0;
                 foreach (var recipe in recipes)
                 {
                     foreach (var product in recipe.Products)
@@ -120,10 +121,19 @@ public class SellOrderMonitorService : ISellOrderMonitorService
                         if (visitedItems.Contains(product.Id)) continue;
 
                         visitedItems.Add(product.Id);
+                        processedItems++;
 
                         await ProcessSellOrdersForItem(marketId, product.Id);
+                        
+                        // Log progress every 100 items to avoid spam
+                        if (processedItems % 100 == 0)
+                        {
+                            _logger.LogInformation($"Processed {processedItems} items in tier {tier} for market {marketId}");
+                        }
                     }
                 }
+                
+                _logger.LogInformation($"Completed tier {tier} in market {marketId}, processed {processedItems} unique items");
 
                 // Add a delay between each tier check
                 await Task.Delay(TimeSpan.FromSeconds(_configService.Config.Market.MarketOperationsTickInSeconds));
@@ -145,7 +155,7 @@ public class SellOrderMonitorService : ISellOrderMonitorService
             
             if (sellOrders.Any())
             {
-                _logger.LogDebug($"Found {sellOrders.Count()} sell orders for item {itemId} in market {marketId}");
+                _logger.LogInformation($"Found {sellOrders.Count()} sell orders for item {itemId} in market {marketId}");
             }
 
             foreach (var sellOrder in sellOrders)
