@@ -43,12 +43,15 @@ public class SellOrderMonitorService : ISellOrderMonitorService
         {
             try
             {
+                _logger.LogInformation($"Starting sell order monitoring cycle for markets: {string.Join(", ", _configService.Config.Market.OperationMarkets)}");
+                
                 var monitoringTasks = _configService.Config.Market.OperationMarkets
                     .Select(marketId => MonitorSellOrders(marketId))
                     .ToList();
 
                 await Task.WhenAll(monitoringTasks);
 
+                _logger.LogInformation($"Completed sell order monitoring cycle. Waiting {_configService.Config.Market.MarketOperationsTickInSeconds} seconds before next cycle.");
                 await Task.Delay(TimeSpan.FromSeconds(_configService.Config.Market.MarketOperationsTickInSeconds));
             }
             catch (OperationCanceledException)
@@ -97,29 +100,40 @@ public class SellOrderMonitorService : ISellOrderMonitorService
 
     private async Task MonitorSellOrders(ulong marketId)
     {
-        _logger.LogDebug($"Monitoring sell orders in market {marketId}");
-        var visitedItems = new HashSet<ulong>();
-
-        // Monitor items from all tiers
-        for (int tier = 1; tier <= 5; tier++)
+        try
         {
-            var recipes = await _recipeService.GetRecipesByTier(tier);
-            _logger.LogDebug($"Checking tier {tier} with {recipes.Count()} recipes in market {marketId}");
+            _logger.LogInformation($"Monitoring sell orders in market {marketId}");
+            var visitedItems = new HashSet<ulong>();
 
-            foreach (var recipe in recipes)
+            // Monitor items from all tiers
+            for (int tier = 1; tier <= 5; tier++)
             {
-                foreach (var product in recipe.Products)
+                _logger.LogInformation($"Checking tier {tier} in market {marketId}");
+                
+                var recipes = await _recipeService.GetRecipesByTier(tier);
+                _logger.LogInformation($"Found {recipes.Count()} recipes in tier {tier} for market {marketId}");
+
+                foreach (var recipe in recipes)
                 {
-                    if (visitedItems.Contains(product.Id)) continue;
+                    foreach (var product in recipe.Products)
+                    {
+                        if (visitedItems.Contains(product.Id)) continue;
 
-                    visitedItems.Add(product.Id);
+                        visitedItems.Add(product.Id);
 
-                    await ProcessSellOrdersForItem(marketId, product.Id);
+                        await ProcessSellOrdersForItem(marketId, product.Id);
+                    }
                 }
-            }
 
-            // Add a delay between each tier check
-            await Task.Delay(TimeSpan.FromSeconds(_configService.Config.Market.MarketOperationsTickInSeconds));
+                // Add a delay between each tier check
+                await Task.Delay(TimeSpan.FromSeconds(_configService.Config.Market.MarketOperationsTickInSeconds));
+            }
+            
+            _logger.LogInformation($"Completed monitoring market {marketId}, checked {visitedItems.Count} unique items");
+        }
+        catch (Exception ex)
+        {
+            _logger.LogError(ex, $"Error monitoring sell orders in market {marketId}");
         }
     }
 
